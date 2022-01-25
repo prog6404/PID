@@ -9,32 +9,34 @@ package frc.robot.subsystems;
 
 import com.kauailabs.navx.frc.AHRS;
 
+import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Spark;
 import edu.wpi.first.wpilibj.SpeedControllerGroup;
-import edu.wpi.first.wpilibj.controller.PIDController;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
-import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
-import edu.wpi.first.wpilibj.shuffleboard.ShuffleboardTab;
-import edu.wpi.first.wpilibj2.command.PIDSubsystem;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpiutil.math.MathUtil;
+
 import static frc.robot.Constants.*;
 
-public class Drivetrain extends PIDSubsystem {
+import java.util.ArrayList;
 
-  //#region Sensors, controllers & etc.
+
+public class Drivetrain extends SubsystemBase {
+
   private Spark driveLeftFront, driveLeftBack, driveRightBack, driveRightFront;
   private SpeedControllerGroup driveLeft, driveRight;
   private DifferentialDrive m_drive;
   private AHRS navX;
-
-  //SHUFFLEBOARD
-  private ShuffleboardTab drivetrainTab;
-  //#endregion
+  private DigitalInput encoder_left;
+  private boolean last;
+  private int count = 0;
   
   public Drivetrain() {
-    super(new PIDController(0,0,0));
 
     // Sensors
     navX = new AHRS();
+    navX.reset();
 
     // Sparks
     driveLeftFront = new Spark(Motors.Ports.DRIVE_LEFT_FRONT);
@@ -47,11 +49,13 @@ public class Drivetrain extends PIDSubsystem {
     driveLeft = new SpeedControllerGroup(driveLeftFront, driveLeftBack);
     driveRight = new SpeedControllerGroup(driveRightFront, driveRightBack);
 
+    encoder_left = new DigitalInput(Sensors.Encoders.LEFT_ENCODER);
+    last = encoder_left.get();
+
     // DifferentialDrive
     m_drive = new DifferentialDrive(driveLeft, driveRight);
 
-    //Shuffle
-    drivetrainTab = Shuffleboard.getTab("Tração");
+    
   }
 
   @Override
@@ -66,36 +70,71 @@ public class Drivetrain extends PIDSubsystem {
    * @param rot value from 1 to 0 for the robot to rotate the robot
    */
   public void arcadeDrive(double fwd, double rot) {
-    m_drive.arcadeDrive(-fwd, rot);
+
+    int esq = calculaVelocidades(-fwd, rot, false).get(0) > 0 ? 1 : -1;
+
+    boolean temp = encoder_left.get();
+    if(temp != last) count += esq;
+    last = temp;
+
+
+
+    SmartDashboard.putNumber("encoder count", count);
+    SmartDashboard.putBoolean("Encoder left", temp);
+    m_drive.arcadeDrive(-fwd, rot, false);
   }
 
   /**
    * stops the robot
    */
   public void stop(){
-    m_drive.arcadeDrive(0, 0);
+    m_drive.arcadeDrive(0, 0, false);
   }
   //#endregion
-
-  @Override
-  protected void useOutput(double output, double setpoint) {
-    Shuffleboard.getTab("DriveTrain").addNumber("PID Output", () -> output);
-  }
-
-  @Override
-  protected double getMeasurement() {
-    return 0;
-  }
-
-  /**
-   * Gets the value of the heading of the robot
-   * @return the value of the heading of the robot
-   */
-  public double getHeading() {
-    return navX.getAngle();//Math.IEEEremainder(_navX.getYaw(), 360); //* -1.0d;
-  }
   
-  public void resetNavx() {
-    navX.reset();
+
+  private ArrayList<Double> calculaVelocidades (double xSpeed, double zRotation, boolean squareInputs){
+    xSpeed = MathUtil.clamp(xSpeed, -1.0, 1.0);
+
+    zRotation = MathUtil.clamp(zRotation, -1.0, 1.0);
+
+    // Square the inputs (while preserving the sign) to increase fine control
+    // while permitting full power.
+    if (squareInputs) {
+      xSpeed = Math.copySign(xSpeed * xSpeed, xSpeed);
+      zRotation = Math.copySign(zRotation * zRotation, zRotation);
+    }
+
+    double leftMotorOutput;
+    double rightMotorOutput;
+
+    double maxInput = Math.copySign(Math.max(Math.abs(xSpeed), Math.abs(zRotation)), xSpeed);
+
+    if (xSpeed >= 0.0) {
+      // First quadrant, else second quadrant
+      if (zRotation >= 0.0) {
+        leftMotorOutput = maxInput;
+        rightMotorOutput = xSpeed - zRotation;
+      } else {
+        leftMotorOutput = xSpeed + zRotation;
+        rightMotorOutput = maxInput;
+      }
+    } else {
+      // Third quadrant, else fourth quadrant
+      if (zRotation >= 0.0) {
+        leftMotorOutput = xSpeed + zRotation;
+        rightMotorOutput = maxInput;
+      } else {
+        leftMotorOutput = maxInput;
+        rightMotorOutput = xSpeed - zRotation;
+      }
+    }
+
+    ArrayList<Double> velocidades = new ArrayList<Double>();
+    velocidades.add(leftMotorOutput);
+    velocidades.add(rightMotorOutput);
+
+    return velocidades;
   }
+
 }

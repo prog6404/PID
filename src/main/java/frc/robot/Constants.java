@@ -13,6 +13,10 @@ public final class Constants {
             public static final int IR_STORAGE = 1;
             public static final int IR_SHOOTER = 2;
         }
+
+        public static class Encoders {
+            public static final int LEFT_ENCODER = 3;
+        }
     }
 
     public static class Motors {
